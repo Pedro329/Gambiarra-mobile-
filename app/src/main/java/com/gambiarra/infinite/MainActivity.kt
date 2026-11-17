@@ -47,7 +47,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(32, 42, 32, 32)
         }
         val title = TextView(this).apply {
-            text = "GAMBIARRA INFINITE v1.2"
+            text = "GAMBIARRA INFINITE v1.1.1"
             textSize = 21f
             setTypeface(null, Typeface.BOLD)
             setTextColor(Color.parseColor("#B4A0FF"))
