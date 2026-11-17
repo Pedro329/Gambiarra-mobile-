@@ -1,0 +1,46 @@
+[
+  {
+    "nome": "teste",
+    "titulo": "teste",
+    "base": "https://api.roteia.ai/v1",
+    "modelo": "",
+    "modo": "free",
+    "adapter": "",
+    "keys": [
+      "rt-live-LevXv4pOBvAyXR3LNLRqzukjqdjL2NpC"
+    ]
+  },
+  {
+    "nome": "2",
+    "titulo": "2",
+    "base": "https://coarena.ai/api/v1",
+    "modelo": "",
+    "modo": "saldo",
+    "adapter": "",
+    "keys": [
+      "coa_f76658ae"
+    ]
+  },
+  {
+    "nome": "3",
+    "titulo": "3",
+    "base": "https://coarena.ai/api/v1",
+    "modelo": "",
+    "modo": "saldo",
+    "adapter": "",
+    "keys": [
+      "coa_729e807f23b6623212d31d06c7eb3064"
+    ]
+  },
+  {
+    "nome": "httpsapiroteiaaiv1",
+    "titulo": "httpsapiroteiaaiv1",
+    "base": "https://api.roteia.ai/v1",
+    "modelo": "",
+    "modo": "free",
+    "adapter": "",
+    "keys": [
+      "rt-live-LevXv4pOBvAyXR3LNLRqzukjqdjL2NpC"
+    ]
+  }
+]
