@@ -1,4 +1,4 @@
-import json, os, secrets, sys, threading, time
+import json, os, re, secrets, sys, threading, time
 
 _SERVER = None
 _SERVER_THREAD = None
@@ -60,16 +60,19 @@ def _carregar_estado():
 
 def _recarregar_keys():
     import farmer, grpool, grserver
-    keys_path = os.path.join(_BASE_DIR, "dados", "keys.json")
-    store = farmer.KeyStore(keys_path)
-    lista = store.keys()
-    grserver.State.keys = lista
-    grpool.load_keys(lista)
+    lista = []
     try:
         import keyring
         keyring.reload(force=True)
+        lista = keyring.rotation() or []
     except Exception:
         pass
+    if not lista:
+        keys_path = os.path.join(_BASE_DIR, "dados", "keys.json")
+        store = farmer.KeyStore(keys_path)
+        lista = store.keys()
+    grserver.State.keys = lista
+    grpool.load_keys(lista)
     return len(lista)
 
 def iniciar_servidor(base_dir):
@@ -142,15 +145,104 @@ def trocar_provider(base_dir, nome):
     log("Nao foi possivel trocar para: %s" % nome)
     return json.dumps({"ok": False})
 
+def _salvar_custom_providers(lista_novos):
+    custom_path = os.path.join(_BASE_DIR, "dados", "custom_providers.json")
+    atuais = []
+    if os.path.isfile(custom_path):
+        try:
+            with open(custom_path, encoding="utf-8") as f:
+                dados = json.load(f)
+            if isinstance(dados, list):
+                atuais = dados
+        except Exception:
+            atuais = []
+
+    novas_keys = 0
+    ultimo_id = None
+    for item in lista_novos:
+        if not isinstance(item, dict):
+            continue
+        base = str(item.get("base") or "").strip().rstrip("/")
+        chaves = [str(k).strip() for k in (item.get("keys") or []) if str(k).strip()]
+        if not base or not chaves:
+            continue
+        titulo = str(item.get("titulo") or item.get("nome") or base).strip()
+        slug = re.sub(r"[^a-zA-Z0-9_-]", "", str(item.get("nome") or titulo).lower()) or "custom"
+        ultimo_id = "custom:" + slug
+
+        existente = next((p for p in atuais if p.get("base", "").rstrip("/") == base or p.get("nome") == slug), None)
+        if existente is not None:
+            pool_atual = existente.setdefault("keys", [])
+            for k in chaves:
+                if k not in pool_atual:
+                    pool_atual.append(k)
+                    novas_keys += 1
+        else:
+            atuais.append({
+                "nome": slug,
+                "titulo": titulo,
+                "base": base,
+                "keys": chaves,
+                "modelo": str(item.get("modelo") or ""),
+            })
+            novas_keys += len(chaves)
+
+    os.makedirs(os.path.dirname(custom_path), exist_ok=True)
+    with open(custom_path, "w", encoding="utf-8") as f:
+        json.dump(atuais, f, indent=2, ensure_ascii=False)
+    return novas_keys, ultimo_id
+
+def adicionar_custom_manual(base_dir, titulo, base_url, api_key, modelo=""):
+    if _BASE_DIR is None:
+        setup(base_dir)
+    import providers
+    url = str(base_url or "").strip().rstrip("/")
+    chave = str(api_key or "").strip()
+    if not url or not chave:
+        return json.dumps({"ok": False, "erro": "Preencha a URL e a API Key"})
+    if not url.startswith("http://") and not url.startswith("https://"):
+        url = "https://" + url
+
+    nome_limpo = str(titulo or "").strip()
+    if not nome_limpo:
+        nome_limpo = re.sub(r"^https?://", "", url).split("/")[0]
+
+    novas, ultimo_id = _salvar_custom_providers([{
+        "nome": nome_limpo,
+        "titulo": nome_limpo,
+        "base": url,
+        "keys": [chave],
+        "modelo": str(modelo or "").strip(),
+    }])
+    if ultimo_id:
+        providers.definir(ultimo_id)
+    total = _recarregar_keys()
+    log("Provider salvo e ativado: %s (%d keys)" % (providers.rotulo(), total))
+    return json.dumps({"ok": True, "titulo": providers.rotulo(), "total": total})
+
 def importar_keys_json(base_dir, conteudo_json):
     if _BASE_DIR is None:
         setup(base_dir)
-    import farmer
+    import farmer, providers
     try:
         raw = json.loads(conteudo_json)
     except Exception as e:
         log("Erro ao ler JSON: %s" % e)
         return json.dumps({"ok": False, "erro": "JSON invalido"})
+
+    candidatos_custom = []
+    if isinstance(raw, dict) and raw.get("base") and raw.get("keys"):
+        candidatos_custom = [raw]
+    elif isinstance(raw, list) and any(isinstance(x, dict) and x.get("base") for x in raw):
+        candidatos_custom = [x for x in raw if isinstance(x, dict) and x.get("base")]
+
+    if candidatos_custom:
+        novas, ultimo_id = _salvar_custom_providers(candidatos_custom)
+        if ultimo_id:
+            providers.definir(ultimo_id)
+        total = _recarregar_keys()
+        log("Custom provider importado (+%d keys) e ativado!" % novas)
+        return json.dumps({"ok": True, "novas": novas, "total": total})
 
     registros = []
     if isinstance(raw, dict) and isinstance(raw.get("keys"), list):
@@ -165,10 +257,6 @@ def importar_keys_json(base_dir, conteudo_json):
                 registros.append(item)
             elif isinstance(item, str) and item.strip():
                 registros.append({"name": "importada", "key": item.strip()})
-    elif isinstance(raw, dict):
-        for k, v in raw.items():
-            if isinstance(v, str) and v.strip().startswith("sk-"):
-                registros.append({"name": str(k), "key": v.strip()})
 
     if not registros:
         log("Nenhuma key encontrada no arquivo.")

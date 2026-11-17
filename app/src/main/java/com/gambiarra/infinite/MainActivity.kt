@@ -5,6 +5,7 @@ import android.app.AlertDialog
 import android.content.*
 import android.graphics.*
 import android.os.*
+import android.text.InputType
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
@@ -46,7 +47,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(32, 42, 32, 32)
         }
         val title = TextView(this).apply {
-            text = "GAMBIARRA INFINITE v1.1"
+            text = "GAMBIARRA INFINITE v1.2"
             textSize = 21f
             setTypeface(null, Typeface.BOLD)
             setTextColor(Color.parseColor("#B4A0FF"))
@@ -109,7 +110,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         val btnConfig = Button(this).apply {
-            text = "Configurações (Provider / Importar keys.json)"
+            text = "Configurações (Provider / URL e Key)"
             setOnClickListener { abrirConfiguracoes() }
         }
 
@@ -161,10 +162,11 @@ class MainActivity : AppCompatActivity() {
 
             val box = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(44, 32, 44, 16)
+                setPadding(44, 28, 44, 16)
             }
+
             val lblProv = TextView(this).apply {
-                text = "Provider ativo:"
+                text = "1. Provider ativo:"
                 textSize = 14f
                 setTypeface(null, Typeface.BOLD)
             }
@@ -173,7 +175,7 @@ class MainActivity : AppCompatActivity() {
                 setSelection(idxAtivo)
             }
             val btnSalvarProv = Button(this).apply {
-                text = "Aplicar Provider"
+                text = "Aplicar Provider Selecionado"
                 setOnClickListener {
                     val escolhido = nomes[spinner.selectedItemPosition]
                     val res = JSONObject(Python.getInstance().getModule("android_bridge").callAttr("trocar_provider", baseDir, escolhido).toString())
@@ -183,13 +185,66 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
+
+            val lblManual = TextView(this).apply {
+                text = "\n2. Adicionar URL + Key na hora:"
+                textSize = 14f
+                setTypeface(null, Typeface.BOLD)
+            }
+            val edtNome = EditText(this).apply {
+                hint = "Nome (opcional, ex: Roteia AI)"
+                inputType = InputType.TYPE_CLASS_TEXT
+                isSingleLine = true
+            }
+            val edtUrl = EditText(this).apply {
+                hint = "Base URL (ex: https://api.roteia.ai/v1)"
+                inputType = InputType.TYPE_TEXT_VARIATION_URI
+                isSingleLine = true
+            }
+            val edtKey = EditText(this).apply {
+                hint = "API Key (ex: rt-live-... ou sk-...)"
+                inputType = InputType.TYPE_CLASS_TEXT
+                isSingleLine = true
+            }
+
+            var dialogRef: AlertDialog? = null
+
+            val btnSalvarManual = Button(this).apply {
+                text = "Salvar e Ativar Provider"
+                setOnClickListener {
+                    val nomeTxt = edtNome.text.toString().trim()
+                    val urlTxt = edtUrl.text.toString().trim()
+                    val keyTxt = edtKey.text.toString().trim()
+                    if (urlTxt.isEmpty() || keyTxt.isEmpty()) {
+                        Toast.makeText(this@MainActivity, "Preencha a URL e a API Key", Toast.LENGTH_SHORT).show()
+                        return@setOnClickListener
+                    }
+                    Thread {
+                        val rawRes = Python.getInstance()
+                            .getModule("android_bridge")
+                            .callAttr("adicionar_custom_manual", baseDir, nomeTxt, urlTxt, keyTxt, "")
+                            .toString()
+                        val res = JSONObject(rawRes)
+                        runOnUiThread {
+                            if (res.optBoolean("ok")) {
+                                Toast.makeText(this@MainActivity, "Ativado: ${res.optString("titulo")}", Toast.LENGTH_LONG).show()
+                                atualizarTela()
+                                dialogRef?.dismiss()
+                            } else {
+                                Toast.makeText(this@MainActivity, "Erro: ${res.optString("erro")}", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }.start()
+                }
+            }
+
             val lblKeys = TextView(this).apply {
-                text = "\nGerenciar Chaves:"
+                text = "\n3. Importar Arquivo ou Recarregar:"
                 textSize = 14f
                 setTypeface(null, Typeface.BOLD)
             }
             val btnImportar = Button(this).apply {
-                text = "Importar keys.json do Celular"
+                text = "Importar Arquivo (.json)"
                 setOnClickListener {
                     val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
                         addCategory(Intent.CATEGORY_OPENABLE)
@@ -210,13 +265,20 @@ class MainActivity : AppCompatActivity() {
             box.addView(lblProv)
             box.addView(spinner)
             box.addView(btnSalvarProv)
+            box.addView(lblManual)
+            box.addView(edtNome)
+            box.addView(edtUrl)
+            box.addView(edtKey)
+            box.addView(btnSalvarManual)
             box.addView(lblKeys)
             box.addView(btnImportar)
             box.addView(btnReviver)
 
-            AlertDialog.Builder(this)
+            val dialogScroll = ScrollView(this).apply { addView(box) }
+
+            dialogRef = AlertDialog.Builder(this)
                 .setTitle("Configurações")
-                .setView(box)
+                .setView(dialogScroll)
                 .setPositiveButton("Fechar", null)
                 .show()
         } catch (e: Exception) {
